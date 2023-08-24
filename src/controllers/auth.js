@@ -42,7 +42,7 @@ async function login(req, res){
         const accessToken = generateToken(signedUser) ;
         const refreshToken = generateToken(signedUser, true) ;
 
-        res.json(jsonRes({ accessToken, refreshToken })) ;
+        res.json(jsonRes({ user: signedUser, accessToken, refreshToken })) ;
     }
     catch(err){
         res.status(err instanceof ValidationError ? 400 : 500).json(jsonRes(null, err.message)) ;
@@ -80,7 +80,7 @@ async function signup(req, res){
             const refreshToken = generateToken(signedUser, true) ;
 
             tokenArr.push(refreshToken) ;
-            res.json(jsonRes({ accessToken, refreshToken })) ;
+            res.json(jsonRes({ user: signedUser, accessToken, refreshToken })) ;
         }
     }
     catch(err){

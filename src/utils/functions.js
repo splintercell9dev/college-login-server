@@ -17,7 +17,7 @@ function authenticateToken(req, res, next){
     
     jwt.verify(token, process.env.SERVER_ACCESS_TOKEN, (err, user) => {
         if (err){
-            return res.status(403).json(jsonRes(null, 'Invalid token or access token has been expired.')) ;
+            return res.status(403).json(jsonRes(null, err.message)) ;
         }
         req.user = user ;
         next() ;
