@@ -1,74 +1,89 @@
 const User = require('../models/User') ;
-const { ValidationError, json } = require('sequelize');
-const { jsonRes, generateToken } = require('../utils/functions') ;
-const Student = require('../models/Student');
+const { ValidationError } = require('sequelize');
+const { jsonRes, generateToken, errorResp, genNewTokens } = require('../utils/functions') ;
 const jwt = require('jsonwebtoken') ;
-
-let tokenArr = [] ;
+const bcrypt = require('bcrypt') ;
+const { users } = require('../db');
+const { FieldError } = require('../utils/custom-error');
 
 async function login(req, res){
     try{
         const { username, password, role } = req.body ;
         
-        if (!username || username.length < 5 || username > 20){
-            return res.status(401).json(jsonRes('Invalid username')) ;
-        }
-        else if (!password || !/^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[^a-zA-Z0-9])(?!.*\s).{8,16}$/.test(password)){
-            return res.status(401).json(jsonRes(null, 'Password is not valid.')) ;
-        }
-        else if (!['STUDENT', 'STAFF'].includes(role)){
-            return res.status(401).json(jsonRes(null, 'Roles provided are invalid')) ;
-        }
-
         const result = await User.findOne({
             where: {
-                username
+                username,
+                role
             }
         }) ;
 
         if (!result){
-            return res.status(401).json(jsonRes(null, 'User not found. Please check if username and password is correct.')) ;
+            throw new Error('User not found. Please check if username, password and role is correct.') ;
         }
-        else if (result.dataValues.role !== req.body.role){
-            return res.status(401).json(jsonRes(null, 'User trying for provided role doesnot exist.')) ;
+        else if (!await bcrypt.compare(password, result.dataValues.password)){
+            console.log('password not match')
+            throw new FieldError('password', 'Password doesnot match.') ;
         }
 
+        const refToken = result.dataValues.refreshToken ;
         const signedUser = {
             id: result.dataValues.id,
             username: result.dataValues.username,
             role: result.dataValues.role
+        } ;
+
+        if (refToken !== null){
+            jwt.verify(refToken, process.env.SERVER_REFRESH_TOKEN, (err, decoded) => {
+                if (err)
+                    throw err ;
+                console.log(decoded, "done") ;
+                res.json(jsonRes(genNewTokens(signedUser, refToken))) ;
+            }) ;
         }
-
-        const accessToken = generateToken(signedUser) ;
-        const refreshToken = generateToken(signedUser, true) ;
-
-        res.json(jsonRes({ user: signedUser, accessToken, refreshToken })) ;
+        else{
+            console.log('totally new tokens');
+            const { accessToken, refreshToken } = genNewTokens(signedUser) ;
+            await User.update({
+                refreshToken
+            }, {
+                where: {
+                    id: signedUser.id
+                }
+            })
+            res.json(jsonRes({ accessToken, refreshToken })) ;
+        }
     }
     catch(err){
-        res.status(err instanceof ValidationError ? 400 : 500).json(jsonRes(null, err.message)) ;
+        let code = 500 ;
+        if (err instanceof ValidationError || err instanceof FieldError || err instanceof jwt.TokenExpiredError)
+            code = 401
+        
+        res.status(code).json(jsonRes(null, errorResp(err))) ;
     }
 }
 
 async function signup(req, res){
+    let transaction ;
     try{
         const { username, password, role } = req.body ;
         const result = await User.findOne({
             where: {
-                username
+                username,
+                role
             }
         }) ;
 
         if (result){
-            throw new Error('Username already exist. Please create account with new Username') ;
+            throw new FieldError('username', 'Username already exist.') ;
         }
         else{
-            const user = { username, password, role } ;
-            const result = await User.create(user) ;
-            if (user.role === 'STUDENT'){
-                await Student.create({
-                    id: result.dataValues.id
-                }) ;
-            }
+            transaction = await users.transaction() ;
+            
+            const result = await User.create({
+                username,
+                password,
+                role
+            }, { transaction }) ;
 
             const signedUser = {
                 id: result.dataValues.id,
@@ -78,49 +93,108 @@ async function signup(req, res){
 
             const accessToken = generateToken(signedUser) ;
             const refreshToken = generateToken(signedUser, true) ;
+            
+            await User.update({
+                refreshToken
+            },
+            {
+                where: {
+                    id: result.dataValues.id
+                },
+                transaction
+            }) ;
 
-            tokenArr.push(refreshToken) ;
-            res.json(jsonRes({ user: signedUser, accessToken, refreshToken })) ;
+            await transaction.commit() ;
+            res.json(jsonRes({ accessToken, refreshToken })) ;
         }
     }
     catch(err){
-        res.status(err instanceof ValidationError ? 400 : 500).json(jsonRes(null, err.message)) ;
+        console.error(err) ;
+        if (transaction)
+            await transaction.rollback() ;
+        let code = 500 ;
+        if (err instanceof ValidationError || err instanceof FieldError)
+            code = 401 ;
+        res.status(code).json(jsonRes(null, errorResp(err))) ;
     }
 }
 
-function refresh(req, res){
-    const token = req.body.refreshToken ;   
+async function refresh(req, res){
+    const token = req.body.refreshToken ;
+
     if (token === null){
-        return res.status(401).json(jsonRes(null, 'No token provied')) ;
-    }
-    else if (!tokenArr.includes(token)){
-        return res.status(403).json(jsonRes(null, 'Refresh token doesnot exist')) ;
+        throw new Error('No token provied') ;
     }
 
-    jwt.verify(token, process.env.SERVER_REFRESH_TOKEN, (err, user) => {
-        if (err){
-            return res.status(403).json(jsonRes(null, 'Refresh token invalid.')) ;
+    try{
+        jwt.verify(token, process.env.SERVER_REFRESH_TOKEN, (err, decoded) => {
+            if (err){
+                if (err instanceof jwt.TokenExpiredError){
+                    code = 401 ;
+                    User.update({
+                        refreshToken: null
+                    }, {
+                        where: {
+                            refreshToken: token
+                        }
+                    }).catch(err => console.error(err)) ;
+                }
+                throw err ;
+            }
+    
+            const accessToken = generateToken({
+                id: decoded.id,
+                name: decoded.name,
+                role: decoded.role
+            }) ;
+    
+            res.json(jsonRes({ accessToken })) ;
+        }) ;
+    }
+    catch(err){
+        let code = 500 ;
+        if (err instanceof ValidationError || err instanceof jwt.JsonWebTokenError)
+            code = 401 ;
+            
+        res.status(code).json(jsonRes(null, errorResp(err))) ;
+    }
+}
+
+async function logout(req, res){
+    const token = req.body.refreshToken ;
+    let transaction ;
+
+    try{
+        transaction = await users.transaction() ;
+
+        if (token === null){
+            throw new Error('No token provided.') ;
         }
 
-        const accessToken = generateToken({
-            id: user.id,
-            name: user.name,
-            role: user.role
-        }) ;
+        const results = await User.findOne({
+            where: {
+                refreshToken: token
+            }
+        }, { transaction }) ;
 
-        res.json(jsonRes({ accessToken })) ;
-    }) ; 
-}
+        if (results){
+            await User.update({
+                refreshToken: null
+            }, {
+                where: {
+                    id: results.dataValues.id
+                }
+            }) ;
+        }
 
-function logout(req, res){
-    const refreshToken = req.body.refreshToken ;
-    
-    if (refreshToken === null){
-        return res.status(403).json(jsonRes('Refresh token not defined')) ;
+        await transaction.commit() ;
+        res.sendStatus(204) ;
     }
-
-    tokenArr = tokenArr.filter(token => token === refreshToken) ;
-    res.sendStatus(204) ;
+    catch(err){
+        console.error(err) ;
+        await transaction.rollback() ;
+        res.status(500).json(jsonRes(null, errorResp(new Error('Failed to logout.'))))
+    }
 }
 
 module.exports = {

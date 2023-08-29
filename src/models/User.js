@@ -1,7 +1,6 @@
 const { DataTypes, Model } = require('sequelize') ;
+const bcrypt = require('bcrypt') ;
 const { users } = require('../db') ;
-
-// class User extends Model{} ;
 
 const User = users.define('user', {
     id: {
@@ -15,6 +14,9 @@ const User = users.define('user', {
         unique: true,
         allowNull: false,
         validate: {
+            notEmpty: {
+                msg: 'Username cannot be empty.'
+            },
             len: {
                 args: [5, 20],
                 msg: 'Username size must be in range from 5 - 20.'
@@ -25,12 +27,15 @@ const User = users.define('user', {
         type: DataTypes.STRING,
         allowNull: false,
         validate: {
+            notEmpty: {
+                msg: 'Password cannot be empty.'
+            },
             len: {
                 args: [8,16],
-                msg: 'Password must be of 8-16 character long.'
+                msg: 'Password must have length between 8-16 chars.'
             },
             is: {
-                args: /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[^a-zA-Z0-9])(?!.*\s).{4,}$/,
+                args: /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[^a-zA-Z0-9])(?!.*\s).{8,}$/,
                 msg: 'Password must have 1 lower, 1 upper case, 1 symbol, 1 number.'
             }
         }
@@ -44,9 +49,24 @@ const User = users.define('user', {
                 msg: "Roles cannot have values other than 'STUDENT' and 'STAFF'." 
             }
         }
+    },
+    refreshToken: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        defaultValue: null
     }
 }, {
-    timestamps: false
+    timestamps: false,
+    hooks: {
+        beforeCreate: async (user) => {
+            const salt = await bcrypt.genSalt() ;
+            user.password = await bcrypt.hash(user.password, salt) ;
+        }
+    }
 }) ;
+
+User.prototype.validPassword = function(pass){
+    return bcrypt.compare(pass, this.password) ;
+}
 
 module.exports = User ;

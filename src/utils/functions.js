@@ -1,4 +1,27 @@
 const jwt = require('jsonwebtoken') ;
+const { ValidationErrorItem, ValidationError } = require('sequelize');
+const { FieldError } = require('./custom-error');
+
+function errorResp(eObj){
+    if (eObj instanceof ValidationError){
+        return eObj.errors.reduce( (obj, item) => {
+            if (!obj.hasOwnProperty(item.path)){
+                obj[item.path] = item.message ;
+            }
+            return obj ;
+        }, {}) ;
+    }
+    else if (eObj instanceof FieldError){
+        return {
+            [eObj.field]: eObj.message
+        }
+    }
+    else{
+        return {
+            default: eObj.message
+        }
+    }
+}
 
 function jsonRes(data, error = null){
     return {
@@ -25,11 +48,27 @@ function authenticateToken(req, res, next){
 }
 
 function generateToken(user, refresh = false){
-    return refresh ? jwt.sign(user, process.env.SERVER_REFRESH_TOKEN) : jwt.sign(user, process.env.SERVER_ACCESS_TOKEN, { expiresIn: '15m' }) ;
+    return refresh ? jwt.sign(user, process.env.SERVER_REFRESH_TOKEN, { expiresIn: '1m' }) : jwt.sign(user, process.env.SERVER_ACCESS_TOKEN, { expiresIn: '30s' }) ;
+}
+
+function genNewTokens(user, refreshToken = null){
+    if (!refreshToken){
+        return {
+            accessToken: generateToken(user),
+            refreshToken: generateToken(user, true)
+        } ;
+    }
+
+    return {
+        accessToken: generateToken(user),
+        refreshToken
+    } ;
 }
 
 module.exports = {
     jsonRes,
     authenticateToken,
-    generateToken
+    generateToken,
+    genNewTokens,
+    errorResp
 } ;

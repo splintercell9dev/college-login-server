@@ -3,11 +3,13 @@ const app = express() ;
 const cors = require('cors') ;
 require('dotenv').config() ;
 
+const PORT = process.env.PORT || 3000 ;
+
 const User = require('./src/models/User') ;
 const Student = require('./src/models/User') ;
 const { users, students } = require('./src/db') ;
 const ApiRouter = require('./src/routes/index') ; 
-const { jsonRes } = require('./src/utils/functions');
+const { jsonRes, errorResp } = require('./src/utils/functions');
 const fs = require('fs') ;
 
 (async () => {
@@ -50,14 +52,16 @@ app.use(cors()) ;
 app.use(express.json()) ;
 app.use(express.urlencoded({ extended: true })) ;
 app.use((error, request, response, next) => {
-    if (error instanceof SyntaxError)
-        response.status(400).json(jsonRes(null, 'Syntax Error. Check correctness of payload syntax.'));
+    if (error instanceof SyntaxError){
+        console.error(error) ;
+        response.status(400).json(jsonRes(null, errorResp(new Error('Syntax Error at request payload.'))));
+    }
     else 
         next();
 });
 
 app.use('/api/v1', ApiRouter) ;
 
-app.listen(3000, () => {
+app.listen(PORT, () => {
     console.log('listening') ;
 }) ;
