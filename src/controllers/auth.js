@@ -167,7 +167,7 @@ async function logout(req, res){
     try{
         transaction = await users.transaction() ;
 
-        if (token === null){
+        if (!token){
             throw new Error('No token provided.') ;
         }
 
@@ -193,7 +193,7 @@ async function logout(req, res){
     catch(err){
         console.error(err) ;
         await transaction.rollback() ;
-        res.status(500).json(jsonRes(null, errorResp(new Error('Failed to logout.'))))
+        res.status(500).json(jsonRes(null, errorResp(err)))
     }
 }
 

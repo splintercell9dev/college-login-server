@@ -6,7 +6,6 @@ require('dotenv').config() ;
 const PORT = process.env.PORT || 3000 ;
 
 const User = require('./src/models/User') ;
-const Student = require('./src/models/User') ;
 const { users, students } = require('./src/db') ;
 const ApiRouter = require('./src/routes/index') ; 
 const { jsonRes, errorResp } = require('./src/utils/functions');
@@ -32,20 +31,17 @@ const fs = require('fs') ;
 
     console.log('all db ready and removed files from pdf folder') ;
     
-    // const result = await User.create({
-    //     username: 'student01',
-    //     password: 'Student@2023',
-    //     role: 'STUDENT'
-    // }) ;
-    // console.log(result)
-    // await Student.create({
-    //     id: result.dataValues.id
-    // })
-    // await User.create({
-    //     username: 'staff01',
-    //     password: 'Staff@2023',
-    //     role: 'STAFF'
-    // }) ;
+    await User.create({
+        username: 'student01',
+        password: 'Student@2023',
+        role: 'STUDENT'
+    }) ;
+
+    await User.create({
+        username: 'staff01',
+        password: 'Staff@2023',
+        role: 'STAFF'
+    }) ;
 })() ;
 
 app.use(cors()) ;
