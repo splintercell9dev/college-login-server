@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken') ;
-const { ValidationErrorItem, ValidationError } = require('sequelize');
+const { ValidationError } = require('sequelize');
 const { FieldError } = require('./custom-error');
+const { MulterError } = require('multer');
 
 function errorResp(eObj){
     if (eObj instanceof ValidationError){
@@ -10,6 +11,11 @@ function errorResp(eObj){
             }
             return obj ;
         }, {}) ;
+    }
+    else if (eObj instanceof MulterError){
+        return {
+            file: eObj.message
+        } ;
     }
     else if (eObj instanceof FieldError){
         return {
@@ -40,7 +46,7 @@ function authenticateToken(req, res, next){
     
     jwt.verify(token, process.env.SERVER_ACCESS_TOKEN, (err, user) => {
         if (err){
-            return res.status(403).json(jsonRes(null, err.message)) ;
+            return res.status(403).json(jsonRes(null, errorResp(err))) ;
         }
         req.user = user ;
         next() ;
@@ -48,7 +54,7 @@ function authenticateToken(req, res, next){
 }
 
 function generateToken(user, refresh = false){
-    return refresh ? jwt.sign(user, process.env.SERVER_REFRESH_TOKEN, { expiresIn: '1m' }) : jwt.sign(user, process.env.SERVER_ACCESS_TOKEN, { expiresIn: '30s' }) ;
+    return refresh ? jwt.sign(user, process.env.SERVER_REFRESH_TOKEN, { expiresIn: '1d' }) : jwt.sign(user, process.env.SERVER_ACCESS_TOKEN, { expiresIn: '15m' }) ;
 }
 
 function genNewTokens(user, refreshToken = null){
