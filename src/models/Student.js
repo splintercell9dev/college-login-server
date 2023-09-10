@@ -1,4 +1,4 @@
-const { DataTypes, Sequelize } = require('sequelize') ;
+const { DataTypes } = require('sequelize') ;
 const { students } = require('../db') ;
 
 
@@ -6,16 +6,19 @@ const Student = students.define('student', {
     id: {
         type: DataTypes.UUID,
         allowNull: false,
-        primaryKey: true
+        primaryKey: true,
+        validate: {
+            notEmpty: true
+        }
     },
-    name: {
+    fullName: {
         type: DataTypes.STRING,
-        allowNull: true,
+        allowNull: false,
         validate: {
             notEmpty: true,
             len: {
-                args: [5,40],
-                msg: 'Fullname must be in range of 5-40'
+                args: [5,50],
+                msg: 'Fullname must be in range of 5-50'
             }
         }
     },
@@ -25,11 +28,11 @@ const Student = students.define('student', {
             notEmpty: true,
             isEmail: true
         },
-        allowNull: true
+        allowNull: false
     },
     contact: {
-        type: DataTypes.NUMBER(10),
-        allowNull: true,
+        type: DataTypes.NUMBER,
+        allowNull: false,
         validate: {
             notEmpty: true,
             isNumeric: {
@@ -47,30 +50,24 @@ const Student = students.define('student', {
     },
     address: {
         type: DataTypes.STRING,
-        allowNull: true,
+        allowNull: false,
         validate: {
             notEmpty: true,
             len: {
                 args: [20, 100],
-                msg: 'Address not in range min: 10 and max: 100 '
+                msg: 'Address must be in range of 20-100 characters.'
             }
         }
     },
     fileName: {
         type: DataTypes.STRING,
-        allowNull: true,
+        allowNull: false,
         validate: {
-            notEmpty: true,
-            len: [36],
+            notEmpty: true
         }
-    },
-    updated: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: false,
-        allowNull: false
     }
 }, {
-    createdAt: false
+    updatedAt: false
 }) ;
 
 module.exports = Student ;
