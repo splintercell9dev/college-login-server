@@ -25,8 +25,10 @@ const upload = multer({
     }
 }).single('file') ;
 
-const { jsonRes } = require("../utils/functions");
+const { jsonRes, errorResp } = require("../utils/functions");
 const Student = require("../models/Student");
+const { FieldError } = require("../utils/custom-error");
+const { students } = require("../db");
 
 async function getDetails(req, res){
     try{
@@ -37,62 +39,67 @@ async function getDetails(req, res){
         }) ;
 
         if (!result){
-            throw new Error("User cannot be found.") ;
+            return res.json(jsonRes(null)) ;
         }
 
         res.json(jsonRes({
-            name: result.name,
+            fullName: result.fullName,
             email: result.email,
             contact: result.contact,
-            address: result.address,
-            fileName: result.fileName,
-            updated: result.updated,
-            updatedAt: result.updatedAt
+            address: result.address
         })) ;
     }
     catch(err){
-        res.status(err instanceof ValidationError ? 400 : 500).json(jsonRes(null, err.message)) ;
+        res.status(err instanceof ValidationError ? 400 : 500).json(jsonRes(null, errorResp(err))) ;
     }
 }
 
 function postDetails(req, res){
     upload(req, res, async (err) => {
-        if (err){
-            return res.status(err instanceof multer.MulterError ? 400 : 500).json(jsonRes(null, err.message)) ;
-        }
-        if (!req.file){
-            return res.status(400).json(jsonRes(null, 'A pdf file is required.')) ;
-        }
+        const transaction = await students.transaction() ;
 
         try{
-            const otherDetails = req.body ;
-            const [affectedRows] = await Student.update({
-                ...otherDetails,
-                updated: true,
-                fileName: req.file.filename
-            }, 
-            {
-                where: {
-                    id: req.user.id,
-                    updated: false
-                }
-            }) ;
-
-            if (!affectedRows){
-                return res.status(400).json(jsonRes(null, 'Fields have already been saved. User cannot re-upload their form.'))
+            if (err){
+                throw err ;
             }
+    
+            if (!req.file){
+                throw new FieldError('file', 'A pdf file is required.') ;
+            }
+
+            const otherDetails = req.body ;
+            const findResult = await Student.findOne({
+                where: {
+                    id: req.user.id
+                }
+            }, { transaction }) ;
+
+            if (findResult){
+                throw new Error('Students cannot re-upload their details again.') ;
+            }
+
+            await Student.create({
+                ...otherDetails,
+                id: req.user.id,
+                fileName: req.file.filename
+            }, { transaction }) ;
+
+            await transaction.commit() ;
 
             res.json({
                 success: true
             }) ;
         }
         catch(err){
-            const path = "pdf/" + req.file.filename ;
-            if (fs.existsSync(path)){
-                console.log('Removed file.') ;
-                fs.unlinkSync(path) ;
+            await transaction.rollback() ;
+                if (req.file){
+                    const path = "pdf/" + req.file.filename ;
+                if (fs.existsSync(path)){
+                    console.log('Removed file.', req.file.filename) ;
+                    fs.unlinkSync(path) ;
+                }
             }
-            res.status(err instanceof ValidationError ? 400 : 500).json(jsonRes(null, err.message)) ;
+            res.status(err instanceof ValidationError || err instanceof multer.MulterError ? 400 : 500).json(jsonRes(null, errorResp(err))) ;
         }
     }) ;
 }
